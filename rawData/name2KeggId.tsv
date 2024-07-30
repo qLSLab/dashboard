@@ -1,0 +1,51 @@
+keggId	Name
+C01342	ammonium
+C00059	sulfate
+C00120	biotin
+C00504	folic acid
+C00137	inositol
+C00253	nicotinic acid
+C00568	p-aminobenzoate
+C00314	pyridoxine
+C00255	riboflavin
+C00378	thiamine
+C00070	copper
+C00238	potassium ion
+C14819	ferric
+C00698	chloride
+C19610	manganese
+C01330	sodium
+C00038	zinc
+C00009	phosphate
+C00305	magnesium
+C00076	calcium
+C01380	ethylene glycol
+C00080	h+
+C00001	h2o
+C00007	oxygen
+C00033	acetate
+C00469	ethanol
+C00031	glucose
+C00116	glycerol
+C00266	glycolaldehyde
+C00010	coenzyme a
+C00003	nad
+glycolylcoa	glycolyl-coa
+C00004	nadh
+C00288	bicarbonate
+C00002	atp
+int1	int1
+tartronylcoa	tartronyl-coa
+C00008	adp
+tartronylcoa	tartronylcoa
+C00005	nadph
+C00258	d-glycerate
+C00006	nadp(+)
+C00068	thiamin diphosphate
+C00227	acetyl-phosphate
+C00024	acetyl-coa
+betahydroxyaspartate	beta-hydroxy-aspartate
+C05840	iminosuccinate
+C00027	hydrogen peroxide
+C14448	glyoxal
+C00160	glycolate
