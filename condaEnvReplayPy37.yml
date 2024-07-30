@@ -1,0 +1,13 @@
+name: replayPy37
+channels:
+  - conda-forge
+  - defaults
+  - bioconda
+dependencies:
+  - python = 3.7
+  - cobra
+  - libxml
+  - ipython
+  - matplotlib
+  - tomli
+  - openpyxl
