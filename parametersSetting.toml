@@ -1,0 +1,20 @@
+# Have you chosen to load a backbone model?
+backboneModelLoadingChoice = "No"
+
+
+l?
+backboneModelLoadingChoice = "No"
+
+
+# Curated backbone  model file name
+finalCuratedModelName = "backboneModel_postCuration.xml"
+
+
+# Backbone model file name
+backboneModel = "yeast8.xml"
+
+
+# Have you chosen to curate the backbone model?
+curateChoice = "Yes"
+
+

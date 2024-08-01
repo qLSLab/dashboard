@@ -1,0 +1,24 @@
+Parameter	Definition
+refineModel_rxns	# File name to refine backbone model including new reactions to add
+backboneModelLoadingChoice	# Have you chosen to load a backbone model?
+backboneModel	# Backbone model file name
+curateChoice	# Have you chosen to curate the backbone model?
+addCurationFileChoice	# Have you add external files to curate the backbone model?
+refineModel_bounds	# File name to refine backbone model including boundaries to change
+refineModel_gpr	# File name to refine backbone model including GPR to fix or add
+orgCode	# KEGG organism code
+finalCuratedModelName	# Curated backbone  model file name
+mergedModelFileName	# Backbone and new model merging file name
+svgMapFileName	# SVG map file name
+newModelName	# New model name
+newModelInternalRxns	# File name including internal reactions of the new model
+newModelExchRxns	# File name including exchange reactions of the new model
+newModelFileName	# New model file name
+mediumFileName	# File name including wet medium composition data
+conditionMetsFileName	# File name including condition metabolites
+extracFluxesFileName	# File name including extracellular production and consumption wet data
+model2Simulate	# Model to simulate file name
+rxnOF	# Reaction set as objective function
+simsFileName	# Simulation file name
+exchangeNewModel	# File name including exchange reactions of the new model
+listConstrainedModels	# List of constrained models
