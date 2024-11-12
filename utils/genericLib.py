@@ -3,6 +3,12 @@ import sys
 import time
 import re
 import pandas as pd
+import base64
+import datetime
+import io
+import xml.etree.ElementTree as ET
+from dash import html
+
 def setWorkingDirs(wrkDir=None, dizDirNames=None):
     """Set the working directories as recived from input dictionary.
 
@@ -57,7 +63,8 @@ CWDIR, dDirs = setWorkingDirs(
         "logs": "logs",
         "figs": "figures",
         "utils": "utils",
-        "map": "maps"
+        "map": "maps",
+        "scripts": "scripts"
     },
 )
 
@@ -148,3 +155,72 @@ def extractRegexFromItem(item, regex):
     else:
         dfItem = []
     return dfItem
+
+def parse_contents(contents, filename):
+    MODELDIR = dDirs["mods"]
+    RAWDIR = dDirs["raw"]
+    MAPDIR = dDirs["map"]
+
+
+    try:
+        content_type, content_string = contents.split(',')
+        decoded = base64.b64decode(content_string)
+        fileWExt = os.path.splitext(filename)
+        try:
+            if "xml" in fileWExt[1]:
+                tree = ET.ElementTree(ET.fromstring(decoded))
+                tree.write(os.path.join(MODELDIR, filename))
+                return filename
+
+            elif "svg" in fileWExt[1]:
+                tree = ET.ElementTree(ET.fromstring(decoded))
+                tree.write(os.path.join(MAPDIR, filename))
+                return filename
+
+            elif "tsv" in fileWExt[1]:
+                # print("content_type\n", content_type, "\n\ncontent_string\n", content_string)
+                df = pd.read_csv(
+                    io.StringIO(decoded.decode('utf-8')), sep = "\t")
+                df.to_csv(os.path.join(RAWDIR, filename), sep = "\t", index = False)
+                return filename
+        except Exception as e:
+            print(e)
+            return html.Div([
+                'There was an error processing this file.'
+            ])
+
+    except:
+        filename = filename[0]
+        content_type, content_string = contents[0].split(',')
+        decoded = base64.b64decode(content_string)
+        fileWExt = os.path.splitext(filename)
+        try:
+            if "xml" in fileWExt[1]:
+                tree = ET.ElementTree(ET.fromstring(decoded))
+                tree.write(os.path.join(MODELDIR, filename))
+                return filename
+
+            elif "svg" in fileWExt[1]:
+                tree = ET.ElementTree(ET.fromstring(decoded))
+                tree.write(os.path.join(MAPDIR, filename))
+                return filename
+
+            elif "tsv" in fileWExt[1]:
+                # print("content_type\n", content_type, "\n\ncontent_string\n", content_string)
+                df = pd.read_csv(
+                    io.StringIO(decoded.decode('utf-8')), sep = "\t")
+                df.to_csv(os.path.join(RAWDIR, filename), sep = "\t", index = False)
+                return filename
+        except Exception as e:
+            print(e)
+            return html.Div([
+                'There was an error processing this file.'
+            ])
+
+
+
+def getRowdataList(lParams):
+    dParams = {}
+    for p in lParams:
+        dParams[p] = None
+    return [dParams] * 5

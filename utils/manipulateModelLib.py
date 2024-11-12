@@ -9,8 +9,11 @@ import re
 import itertools as itt
 import os
 import utils.genericLib as gL
+import xml.etree.ElementTree as ET
 
 OUTDIR = gL.dDirs["out"]
+MODELDIR = gL.dDirs["mods"]
+
 
 """
 Questa libreria contiene funzioni per tutto cio' che riguarda gli elementi del modello:
@@ -18,10 +21,56 @@ prendere info esistenti, modificare info esistenti, aggiungere nuove info/mets/r
 modificare boundaries modello.
 """
 
-def addMissingChemicalFormulae(model):
+def getModelSpeciesAnnotation(modelName):
+    tree = ET.parse(os.path.join(MODELDIR, modelName))
+    root = tree.getroot()
+    for elem in tree.iter():
+        if elem.tag.endswith("species"):
+            speciesTag = elem.tag
+    dSpecies2Annotation = {}
+    for sp in tree.iter(tag = speciesTag):
+        if sp.attrib["id"].startswith("M_"):
+            speciesId = sp.attrib["id"][2:]
+        else:
+            speciesId = sp.attrib["id"]
+        annotationSpecies = {}
+        for child in sp.iter():
+            if child.tag.endswith("li"):
+                for k in child.attrib:
+                    dbLink = child.attrib[k]
+                    lDbLink = dbLink.split("/")
+                    annotationSpecies[lDbLink[-2]] = lDbLink[-1]
+        dSpecies2Annotation[speciesId] = annotationSpecies
+    return dSpecies2Annotation
+
+
+def getModelRxnsAnnotation(modelName):
+    dRxns2Annotation = {}
+    tree = ET.parse(os.path.join(MODELDIR, modelName))
+    root = tree.getroot()
+    for elem in tree.iter():
+        if elem.tag.endswith("reaction"):
+            rxnTag = elem.tag
+    for sp in tree.iter(tag = rxnTag):
+        if sp.attrib["id"].startswith("R_"):
+            rxnId = sp.attrib["id"][2:]
+        else:
+            rxnId = sp.attrib["id"]
+        annotationRxn = {}
+        for child in sp.iter():
+            if child.tag.endswith("li"):
+                for k in child.attrib:
+                    dbLink = child.attrib[k]
+                    lDbLink = dbLink.split("/")
+                    annotationRxn[lDbLink[-2]] = lDbLink[-1]
+        dRxns2Annotation[rxnId] = annotationRxn
+    return dRxns2Annotation
+
+
+def addMissingChemicalFormulae(model, dSpecies2Annotation):
     for m in model.metabolites:
-        if m.formula is None and "kegg.compound" in m.annotation:
-            keggId = m.annotation["kegg.compound"]
+        if m.formula is None and "kegg.compound" in dSpecies2Annotation[m.id]:
+            keggId = dSpecies2Annotation[m.id]["kegg.compound"]
             dizMet = kL.getKeggInfo("cpd:" + keggId)
             if "FORMULA" in dizMet:
                 chemFormula = dizMet["FORMULA"]
@@ -66,6 +115,99 @@ def isIsolatedMet(model, met):
             isolatedMet = True
     return isolatedMet
 
+
+def isIsolatedMet_and_defineIsolatedMetType(model, m):
+    ## definisce se metabolita è unn dead end metabolite e se la risposta è sì definisce anche se è sempre solo un substrato nel modello, se solo prodotto o se entrambi cosi da potr automaticamente assegnare l'exchange reaction
+    # print("m: ", m)
+
+    isolatedMet = False
+    addDemand= False
+    addSink = False
+    # print("INIZIO")
+    # print("isolatedMet: ", isolatedMet)
+    # print("addDemand: ", addDemand)
+    # print("addSink: ", addSink)
+    if len(m.reactions) == 1:
+        reazioni = list(m.reactions)
+        lonlySub = []
+        lonlyProd = []
+        lForward = []
+        lBackward = []
+
+        for r in reazioni:
+            lonlySub.append(m in r.reactants)
+            lonlyProd.append(m in r.products)
+            if r.lower_bound == 0 and r.upper_bound > 0:
+                lForward.append(True)
+                lBackward.append(False)
+            elif r.lower_bound < 0 and r.upper_bound == 0:
+                lForward.append(False)
+                lBackward.append(True)
+            else:
+                lForward.append(False)
+                lBackward.append(False)
+        # if (all(lonlySub) is True and all(lForward) is True) or (all(lonlySub) is True and all(lBackward) is True) or (all(lonlyProd) is True and all(lForward) is True) or (all(lonlyProd) is True and all(lBackward) is True):
+        #     isolatedMet = True
+
+        if (all(lonlySub) is True and all(lForward) is True):
+            isolatedMet = True
+            addDemand = True
+            addSink = False
+        elif (all(lonlySub) is True and all(lBackward) is True):
+            isolatedMet = True
+            addDemand = False
+            addSink = True
+        elif (all(lonlyProd) is True and all(lForward) is True):
+            isolatedMet = True
+            addDemand = False
+            addSink = True
+        elif (all(lonlyProd) is True and all(lBackward) is True):
+            isolatedMet = True
+            addDemand = True
+            addSink = False
+
+    elif len(m.reactions) > 1:
+        reazioni = list(m.reactions)
+        lonlySub = []
+        lonlyProd = []
+        lForward = []
+        lBackward = []
+        for r in reazioni:
+            lonlySub.append(m in r.reactants)
+            lonlyProd.append(m in r.products)
+            if r.lower_bound == 0 and r.upper_bound > 0:
+                lForward.append(True)
+                lBackward.append(False)
+            elif r.lower_bound < 0 and r.upper_bound == 0:
+                lForward.append(False)
+                lBackward.append(True)
+            else:
+                lForward.append(False)
+                lBackward.append(False)
+        # if (all(lonlySub) is True and all(lForward) is True) or (all(lonlySub) is True and all(lBackward) is True) or (all(lonlyProd) is True and all(lForward) is True) or (all(lonlyProd) is True and all(lBackward) is True):
+        #     isolatedMet = True
+
+        if (all(lonlySub) is True and all(lForward) is True):
+            isolatedMet = True
+            addDemand = True
+            addSink = False
+        elif (all(lonlySub) is True and all(lBackward) is True):
+            isolatedMet = True
+            addDemand = False
+            addSink = True
+        elif (all(lonlyProd) is True and all(lForward) is True):
+            isolatedMet = True
+            addDemand = False
+            addSink = True
+        elif (all(lonlyProd) is True and all(lBackward) is True):
+            isolatedMet = True
+            addDemand = True
+            addSink = False
+
+
+    return isolatedMet, addDemand, addSink
+
+
 def connectSameMetaboliteDifferentCompartment(model, dfbyName):
     dMet2Compartment = getMet2Compartment(model)
     for el in dfbyName.iteritems():
@@ -74,7 +216,7 @@ def connectSameMetaboliteDifferentCompartment(model, dfbyName):
             lCompartments = []
             for m in el[1]:
                 lCompartments.append(dMet2Compartment[m])
-            addTransportRxn(model, metName, el[1], lCompartments)
+            addTransportRxn(model, metName, el[1], lCompartments, dSpecies2Annotation)
         elif len(el[1]) > 2:
             lMet2BeTransported_initial = el[1]
             lMet2BeTransported_after = el[1]
@@ -88,14 +230,14 @@ def connectSameMetaboliteDifferentCompartment(model, dfbyName):
                     lCompartments = []
                     for m in pair:
                         lCompartments.append(dMet2Compartment[m])
-                    addTransportRxn(model, metName, pair, lCompartments)
+                    addTransportRxn(model, metName, pair, lCompartments, dSpecies2Annotation)
             else:
                 lExtracMet = gL.difference(lMet2BeTransported_initial, lMet2BeTransported_after)[0]
                 for internalMet in lMet2BeTransported_after:
                     lCompartments = ["e", dMet2Compartment[internalMet]]
-                    addTransportRxn(model, metName, [lExtracMet, internalMet], lCompartments)
+                    addTransportRxn(model, metName, [lExtracMet, internalMet], lCompartments, dSpecies2Annotation)
 
-def addTransportRxn(model, nameMet, lTransportedMets, lCompartments, lb = -1000, ub = 1000):
+def addTransportRxn(model, nameMet, lTransportedMets, lCompartments, dSpecies2Annotation, lb = -1000, ub = 1000):
     idRxn = "Transport_" + nameMet + "_" + "_".join(lCompartments)
     if idRxn not in model.reactions:
         reaction = cb.Reaction(idRxn)
@@ -109,13 +251,13 @@ def addTransportRxn(model, nameMet, lTransportedMets, lCompartments, lb = -1000,
             if s in model.metabolites:
                 dEquation[model.metabolites.get_by_id(s)] = -1 * dSubs[s]
             else:
-                addMets(model, p, p, "c", chemFormula = "", fromKEGG = False)
+                addMets(model, p, p, "c", dSpecies2Annotation, chemFormula = "", fromKEGG = False)
 
         for p in dProds:
             if p in model.metabolites:
                 dEquation[model.metabolites.get_by_id(p)] = 1 * dProds[p]
             else:
-                addMets(model, p, p, "c", chemFormula = "", fromKEGG = False)
+                addMets(model, p, p, "c", dSpecies2Annotation, chemFormula = "", fromKEGG = False)
 
         reaction.add_metabolites(dEquation)
         model.add_reactions([reaction])
@@ -126,7 +268,7 @@ def addTransportRxn(model, nameMet, lTransportedMets, lCompartments, lb = -1000,
 
 def exchgRxns4IsolatedMet(model, dfbyName):
     """Add exchange reactions for isolated metabolites"""
-    print("num rxns prima addition of exc rxns for isolated mets: " , len(model.reactions))
+    # print("num rxns prima addition of exc rxns for isolated mets: " , len(model.reactions))
     for el in dfbyName.iteritems():
         metName = re.sub('[^0-9a-zA-Z]+', '_',el[0])
         if len(el[1]) == 1:
@@ -172,7 +314,7 @@ def exchgRxns4IsolatedMet(model, dfbyName):
             #         addExchRxnForMet(model, mObj, 0, 1000.0)
             #     elif all(lonlyProd) is True and all(lBackward) is True:
             #         addExchRxnForMet(model, mObj, -1000.0, 0.0)
-    print("num rxns dopo addition of exc rxns for isolated mets: " , len(model.reactions))
+    # print("num rxns dopo addition of exc rxns for isolated mets: " , len(model.reactions))
 
 def addExchRxnForMet(modelIn, metIn, newLB=-1000.0, newUB=1000.0):
     """Add an exchange reaction (exchange or sink) for a given metabolite
@@ -191,9 +333,11 @@ def addExchRxnForMet(modelIn, metIn, newLB=-1000.0, newUB=1000.0):
     # mId = met.id
     try:
         newBoundaryRxn = modelIn.add_boundary(metIn, type="my-bound", reaction_id = 'EX_' + metIn.id, lb=newLB, ub=newUB)
+        # print("newBoundaryRxn: ", newBoundaryRxn, "\n\n")
+        return newBoundaryRxn
     except:
-        print("An exchange reaction already exists for ", mId)
-    return newBoundaryRxn
+        # print("An exchange reaction already exists for ", metIn)
+        return modelIn.reactions.get_by_id("EX_" + metIn.id)
 
 def blockUptakeAndDemand(model):
     for rxn in model.reactions:
@@ -241,7 +385,8 @@ def getDemand(model):
                 lDemand_wNegativeFlux.append(rxn.id)
     return lDemand_wPositiveFlux, lDemand_wNegativeFlux
 
-def scaleExchangeRxnsBoundaries(modelIn, dConfigParams=None):
+# def scaleExchangeRxnsBoundaries(modelIn, dConfigParams=None):
+def scaleExchangeRxnsBoundaries(modelIn):
     """Force the boundaries of exchange reaction to be -1000 or 1000 (not inf)"""
     for rxn in modelIn.reactions:
         if rxn.lower_bound == -float("inf"):
@@ -265,12 +410,13 @@ def scaleExchangeRxnsBoundaries(modelIn, dConfigParams=None):
                 rxn.upper_bound = 1000.0
     return modelIn
 
-def checkSomethingIsProducedFromNothing(modelIn, logFile, dConfigParams=None):
-    modelName = dConfigParams["modelName"].split(".")[0]
+# def checkSomethingIsProducedFromNothing(modelIn, modelName, logFile, dConfigParams=None):
+def checkSomethingIsProducedFromNothing(modelIn, modelName):
+    # modelName = dConfigParams["modelName"].split(".")[0]
     lDemand_wPositiveFlux, lDemand_wNegativeFlux = getDemand(modelIn)
     blockUptake(modelIn)
     outputFileNameFVA = "FVA_" + modelName + "_checkIfMakeSomethingFromNothing"
-    faL.computeFVAandSaveFlux(modelIn, outputFileNameFVA, logFile)
+    faL.computeFVAandSaveFlux(modelIn, outputFileNameFVA)
     fva = pd.read_csv(os.path.join(OUTDIR, outputFileNameFVA + ".tsv"), sep = "\t")
 
     checkDemand_wPositiveFlux = fva[fva["Rxn"].isin(lDemand_wPositiveFlux)]
@@ -295,22 +441,23 @@ def checkSomethingIsProducedFromNothing(modelIn, logFile, dConfigParams=None):
 
     pd.concat(lDfs).to_csv(os.path.join(OUTDIR, modelName + "_checkIfSomethingFromNothing_positiveReactions.tsv"), sep = "\t", index = False)
 
-def getMet2KeggId(model):
+def getMet2KeggId(model, dSpecies2Annotation):
     dMet2KeggId = {}
     for met in model.metabolites:
-        if "kegg.compound" in met.annotation:
-            if met.annotation["kegg.compound"] not in dMet2KeggId:
-                dMet2KeggId[met.annotation["kegg.compound"]] = {met.compartment: met.id}
-            elif met.annotation["kegg.compound"] in dMet2KeggId:
-                dMet2KeggId[met.annotation["kegg.compound"]].update({met.compartment: met.id})
+        if "kegg.compound" in dSpecies2Annotation[met.id]:
+            if dSpecies2Annotation[met.id]["kegg.compound"] not in dMet2KeggId:
+                dMet2KeggId[dSpecies2Annotation[met.id]["kegg.compound"]] = {met.compartment: met.id}
+            elif dSpecies2Annotation[met.id]["kegg.compound"] in dMet2KeggId:
+                dMet2KeggId[dSpecies2Annotation[met.id]["kegg.compound"]].update({met.compartment: met.id})
     return dMet2KeggId
 
-def checkIfUptakeSomethingBlockingDemand(modelIn, logFile, dConfigParams=None):
-    modelName = dConfigParams["modelName"].split(".")[0]
+# def checkIfUptakeSomethingBlockingDemand(modelIn,modelName, logFile, dConfigParams=None):
+def checkIfUptakeSomethingBlockingDemand(modelIn,modelName):
+    # modelName = dConfigParams["modelName"].split(".")[0]
     lUptake_wPositiveFlux, lUptake_wNegativeFlux = getUptake(modelIn)
     blockDemand(modelIn)
     outputFileNameFVA = "FVA_" + modelName + "_checkIfUptakeSomethingBlockingDemand"
-    faL.computeFVAandSaveFlux(modelIn, outputFileNameFVA, logFile)
+    faL.computeFVAandSaveFlux(modelIn, outputFileNameFVA)
     fva = pd.read_csv(os.path.join(OUTDIR, outputFileNameFVA + ".tsv"), sep = "\t")
 
     checkUpt_wPositiveFlux = fva[fva["Rxn"].isin(lUptake_wPositiveFlux)]
@@ -326,11 +473,12 @@ def checkIfUptakeSomethingBlockingDemand(modelIn, logFile, dConfigParams=None):
 
     pd.concat(lDfs).to_csv(os.path.join(OUTDIR, modelName + "_checkIfUptakeSomethingBlockingDemand_positiveReactions.tsv"), sep = "\t", index = False)
 
-def getReactionsFormingLoops(modelIn, logFile, dConfigParams=None):
-    modelName = dConfigParams["modelName"].split(".")[0]
+# def getReactionsFormingLoops(modelIn, logFile, modelName, dConfigParams=None):
+def getReactionsFormingLoops(modelIn, modelName):
+    # modelName = dConfigParams["modelName"].split(".")[0]
     blockUptakeAndDemand(modelIn)
     outputFileNameFVA = "FVA_" + modelName + "_checkLoops"
-    faL.computeFVAandSaveFlux(modelIn, outputFileNameFVA, logFile)
+    faL.computeFVAandSaveFlux(modelIn, outputFileNameFVA)
     dfLoops = pd.read_csv(os.path.join(OUTDIR, outputFileNameFVA + ".tsv"), sep = "\t")
     mask = (dfLoops["Min"] > 0) | (dfLoops["Max"] > 0)
     outputFileNameFVA_loops = "FVA_" + modelName + "_rectionsFormingloops"
@@ -373,6 +521,7 @@ def convertInEquationModelMetsIds2Formula(modelIn, reactionString, lb, ub):
 def getExchInModelForKeggId(model, keggId, dNamesConversion):
     rId = None
     activeModelMet = None
+    # print("dNamesConversion\n", dNamesConversion, "\n")
     if keggId in dNamesConversion and "e" in dNamesConversion[keggId]:
         activeModelMet = dNamesConversion[keggId]["e"]
         lRxns = model.metabolites.get_by_id(activeModelMet).reactions
@@ -464,7 +613,7 @@ def getKeggRxnCompartmentInModel(lKeggId, dNamesConversion):
     compartment = next(iter(Counter(lComps))) # take first element of the sorted list
     return compartment
 
-def fromKeggRxn2ModelRxn(model, lKeggId, rxnCompartment, equation, dNamesConversion):
+def fromKeggRxn2ModelRxn(model, lKeggId, rxnCompartment, equation, dNamesConversion, dSpecies2Annotation):
     # rxnCompartment = getKeggRxnCompartmentInModel(lKeggId, dNamesConversion)
     for met in lKeggId:
         if met in dNamesConversion and rxnCompartment in dNamesConversion[met]:
@@ -478,21 +627,21 @@ def fromKeggRxn2ModelRxn(model, lKeggId, rxnCompartment, equation, dNamesConvers
             formula = ""
             if "FORMULA" in dizMet:
                 formula = dizMet["FORMULA"]
-            addMets(model, met + "_" + rxnCompartment, nameMet, rxnCompartment, chemFormula = formula, fromKEGG = True)
+            addMets(model, met + "_" + rxnCompartment, nameMet, rxnCompartment, dSpecies2Annotation, chemFormula = formula, fromKEGG = True)
             equation = equation.replace(met, met + "_" + rxnCompartment)
     return equation
 
 def convert2ModelMet(keggMetId, compartment, modelFromWhichInfo, dNamesConversion = {}):
-    print("keggMetId: ", keggMetId, " - compartment: ", compartment, "\n")
+    # print("keggMetId: ", keggMetId, " - compartment: ", compartment, "\n")
     if modelFromWhichInfo is not None and keggMetId in dNamesConversion and compartment in dNamesConversion[keggMetId]:
-        print("OLD MET:\t", dNamesConversion[keggMetId][compartment])
+        # print("OLD MET:\t", dNamesConversion[keggMetId][compartment])
         # print("dNamesConversion[keggMetId][compartment] ESISTE: ", dNamesConversion[keggMetId][compartment] in model2AddTo.reactions)
         # sys.exit()
         metObj = modelFromWhichInfo.metabolites.get_by_id(dNamesConversion[keggMetId][compartment])
         fromKEGG = False
         return metObj.id, metObj.name, metObj.formula, dNamesConversion, fromKEGG
     else:
-        print("NEW MET")
+        # print("NEW MET")
         # crea nuovo metabolita
         dizMet = kL.getKeggInfo("cpd:" + keggMetId)
         nameMet = ""
@@ -512,14 +661,15 @@ def convert2ModelMet(keggMetId, compartment, modelFromWhichInfo, dNamesConversio
 
         return keggMetId + "_" + compartment, nameMet, formula, dNamesConversion, fromKEGG
 
-def fromKEGG2ModelIdAndAdd2Model(met, compartment, dNamesConversion, model2AddTo, modelTakenInfoFrom):
+def fromKEGG2ModelIdAndAdd2Model(met, dSpecies2Annotation, compartment, dNamesConversion, model2AddTo, modelTakenInfoFrom):
     metObjId, metObjName, metObjFormula, dNamesConversion, isKEGG = convert2ModelMet(met, compartment, modelTakenInfoFrom, dNamesConversion = dNamesConversion)
-    print("RESULTS: ", metObjId,"\n", metObjName,"\n", metObjFormula,"\n", isKEGG)
-    addMets(model2AddTo, metObjId, metObjName, compartment, chemFormula = metObjFormula, fromKEGG = isKEGG)
-    print("ADDED MET\t", model2AddTo.metabolites.get_by_id(metObjId), "\n")
+    # print("RESULTS: ", metObjId,"\n", metObjName,"\n", metObjFormula,"\n", isKEGG)
+    addMets(model2AddTo, metObjId, metObjName, compartment, dSpecies2Annotation, chemFormula = metObjFormula, fromKEGG = isKEGG)
+    # print("ADDED MET\t", model2AddTo.metabolites.get_by_id(metObjId), "\n")
     return metObjId,dNamesConversion
 
-def convertKeggRxns2ModelRxn(dizKeggRxn, model2AddTo, organismId,rxnIdentifier, compartment, modelTakenInfoFrom, dNamesConversion = None):
+
+def convertKeggRxns2ModelRxn(dizKeggRxn, dSpecies2Annotation, model2AddTo, organismId,rxnIdentifier, compartment, modelTakenInfoFrom, dNamesConversion = None):
     reaction = cb.Reaction(rxnIdentifier + "_" + compartment)
 
     if "NAME" in dizKeggRxn:
@@ -533,12 +683,50 @@ def convertKeggRxns2ModelRxn(dizKeggRxn, model2AddTo, organismId,rxnIdentifier, 
 
     dKeggMets2ModelMets_subs = {}
     for met in dSubs:
-        metObjId, dNamesConversion = fromKEGG2ModelIdAndAdd2Model(met, compartment, dNamesConversion, model2AddTo,  modelTakenInfoFrom)
+        metObjId, dNamesConversion = fromKEGG2ModelIdAndAdd2Model(met, dSpecies2Annotation, compartment, dNamesConversion, model2AddTo,  modelTakenInfoFrom)
         dKeggMets2ModelMets_subs[metObjId] = 1* dSubs[met]
 
     dKeggMets2ModelMets_prods = {}
     for met in dProds:
-        metObjId, dNamesConversion = fromKEGG2ModelIdAndAdd2Model(met, compartment, dNamesConversion, model2AddTo,  modelTakenInfoFrom)
+        metObjId, dNamesConversion = fromKEGG2ModelIdAndAdd2Model(met, dSpecies2Annotation, compartment, dNamesConversion, model2AddTo,  modelTakenInfoFrom)
+        dKeggMets2ModelMets_prods[metObjId] = 1* dProds[met]
+
+    dKeggMets2ModelMets = {}
+
+    for s in dKeggMets2ModelMets_subs:
+        dKeggMets2ModelMets[model2AddTo.metabolites.get_by_id(s)] = -1 * dKeggMets2ModelMets_subs[s]
+    for p in dKeggMets2ModelMets_prods:
+        dKeggMets2ModelMets[model2AddTo.metabolites.get_by_id(p)] = 1 * dKeggMets2ModelMets_prods[p]
+
+    reaction.add_metabolites(dKeggMets2ModelMets)
+    if "ORTHOLOGY" in dizKeggRxn:
+        gpr = getGPRfromKEGG(organismId, lOrths = list(dizKeggRxn['ORTHOLOGY'].keys()))
+    elif "ENZYME" in dizKeggRxn:
+        gpr = getGPRfromKEGG(organismId, lEc = dizKeggRxn['ENZYME'])
+
+    return reaction, gpr, dNamesConversion
+
+
+def convertEquation2ModelEquation(dizKeggRxn, model2AddTo, organismId,rxnIdentifier, compartment, modelTakenInfoFrom, dNamesConversion = None):
+    reaction = cb.Reaction(rxnIdentifier + "_" + compartment)
+
+    if "NAME" in dizKeggRxn:
+        reaction.name = dizKeggRxn["NAME"][0]
+    else:
+        reaction.name = rxnIdentifier + "_" + compartment
+
+    lEquation = dizKeggRxn["EQUATION"].split(' <=> ')
+    dSubs = gL.dizReaProd(lEquation[0])
+    dProds = gL.dizReaProd(lEquation[1])
+
+    dKeggMets2ModelMets_subs = {}
+    for met in dSubs:
+        metObjId, dNamesConversion = fromKEGG2ModelIdAndAdd2Model(met, dSpecies2Annotation, compartment, dNamesConversion, model2AddTo,  modelTakenInfoFrom)
+        dKeggMets2ModelMets_subs[metObjId] = 1* dSubs[met]
+
+    dKeggMets2ModelMets_prods = {}
+    for met in dProds:
+        metObjId, dNamesConversion = fromKEGG2ModelIdAndAdd2Model(met,dSpecies2Annotation, compartment, dNamesConversion, model2AddTo,  modelTakenInfoFrom)
         dKeggMets2ModelMets_prods[metObjId] = 1* dProds[met]
 
     dKeggMets2ModelMets = {}
@@ -567,38 +755,38 @@ def convertEquation2ModelEquation(model2AddTo, rxnIdentifier,compartment, equati
     dMets2ModelMets_subs = {}
     for met in dSubs:
         metLower = met.lower()
-        print("metLower: ", metLower)
+        # print("metLower: ", metLower)
         correspondingKeggId, dfConversionMetName2MetKegg= kL.getKeggMetId(metLower, dfConversionMetName2MetKegg)
-        print("correspondingKeggId: \t", correspondingKeggId)
-        metObjId, dNamesConversion = fromKEGG2ModelIdAndAdd2Model(correspondingKeggId,compartment, dNamesConversion, model2AddTo, model2GetInfoFrom)
+        # print("correspondingKeggId: \t", correspondingKeggId)
+        metObjId, dNamesConversion = fromKEGG2ModelIdAndAdd2Model(correspondingKeggId,dSpecies2Annotation,compartment, dNamesConversion, model2AddTo, model2GetInfoFrom)
         dMets2ModelMets_subs[metObjId] = 1* dSubs[met]
 
-    print("\ndMets2ModelMets_subs\n", dMets2ModelMets_subs)
+    # print("\ndMets2ModelMets_subs\n", dMets2ModelMets_subs)
 
     dMets2ModelMets_prods = {}
 
     for met in dProds:
         metLower = met.lower()
-        print("metLower: ", metLower)
+        # print("metLower: ", metLower)
         correspondingKeggId, dfConversionMetName2MetKegg= kL.getKeggMetId(metLower, dfConversionMetName2MetKegg)
-        print("correspondingKeggId: \t", correspondingKeggId)
-        metObjId, dNamesConversion = fromKEGG2ModelIdAndAdd2Model(correspondingKeggId, compartment, dNamesConversion, model2AddTo, model2GetInfoFrom)
+        # print("correspondingKeggId: \t", correspondingKeggId)
+        metObjId, dNamesConversion = fromKEGG2ModelIdAndAdd2Model(correspondingKeggId,dSpecies2Annotation, compartment, dNamesConversion, model2AddTo, model2GetInfoFrom)
         dMets2ModelMets_prods[metObjId] = 1* dProds[met]
 
-    print("\dMets2ModelMets_prods\n", dMets2ModelMets_prods)
+    # print("\dMets2ModelMets_prods\n", dMets2ModelMets_prods)
 
     dKeggMets2ModelMets = {}
     for s in dMets2ModelMets_subs:
         dKeggMets2ModelMets[model2AddTo.metabolites.get_by_id(s)] = -1 * dMets2ModelMets_subs[s]
     for p in dMets2ModelMets_prods:
         dKeggMets2ModelMets[model2AddTo.metabolites.get_by_id(p)] = 1 * dMets2ModelMets_prods[p]
-    print("dKeggMets2ModelMets\t", dKeggMets2ModelMets)
+    # print("dKeggMets2ModelMets\t", dKeggMets2ModelMets)
     reaction.add_metabolites(dKeggMets2ModelMets)
 
     return reaction, dNamesConversion, dfConversionMetName2MetKegg
 
 
-def addRxns(model,dNamesConversion, organismId, lb = -1000, ub = 1000, rxnIdentifier = None):
+def addRxns(model,dNamesConversion, organismId, dSpecies2Annotation, lb = -1000, ub = 1000, rxnIdentifier = None):
     if rxnIdentifier not in model.reactions:
         dizRxn = kL.getKeggInfo("rn:" + rxnIdentifier)
         reaction = cb.Reaction(rxnIdentifier)
@@ -615,7 +803,7 @@ def addRxns(model,dNamesConversion, organismId, lb = -1000, ub = 1000, rxnIdenti
         else:
             dProds = {}
 
-        equationConverted = fromKeggRxn2ModelRxn(model, list(dSubs.keys()) + list(dProds.keys()), dizRxn["EQUATION"], dNamesConversion)
+        equationConverted = fromKeggRxn2ModelRxn(model, list(dSubs.keys()) + list(dProds.keys()), dizRxn["EQUATION"], dNamesConversion, dSpecies2Annotation)
 
         if equationConverted.split(' <=> ')[0] != '':
             dSubs = gL.dizReaProd(equationConverted.split(' <=> ')[0])
@@ -643,7 +831,7 @@ def addRxns(model,dNamesConversion, organismId, lb = -1000, ub = 1000, rxnIdenti
         print(f"Attention: {rxnIdentifier} is already in the model!")
         sys.exit()
 
-def addRxn2Model(model, rxnIdentifier, compartment, dNamesConversion, lb = -1000, ub = 1000):
+def addRxn2Model(model, rxnIdentifier, compartment, dNamesConversion,dSpecies2Annotation,  lb = -1000, ub = 1000):
     idRxn = rxnIdentifier + "_" + compartment
     if idRxn not in model.reactions:
         reaction = cb.Reaction(idRxn)
@@ -657,13 +845,13 @@ def addRxn2Model(model, rxnIdentifier, compartment, dNamesConversion, lb = -1000
             if s in model.metabolites:
                 dEquation[model.metabolites.get_by_id(s)] = -1 * dSubs[s]
             else:
-                addMets(model, p, p, "c", chemFormula = "", fromKEGG = False)
+                addMets(model, p, p, "c", dSpecies2Annotation,chemFormula = "", fromKEGG = False)
 
         for p in dProds:
             if p in model.metabolites:
                 dEquation[model.metabolites.get_by_id(p)] = 1 * dProds[p]
             else:
-                addMets(model, p, p, "c", chemFormula = "", fromKEGG = False)
+                addMets(model, p, p, "c", dSpecies2Annotation, chemFormula = "", fromKEGG = False)
 
         reaction.add_metabolites(dEquation)
         model.add_reactions([reaction])
@@ -688,7 +876,7 @@ def addRxn2Model(model, rxnIdentifier, compartment, dNamesConversion, lb = -1000
         else:
             dProds = {}
 
-        equationConverted = fromKeggRxn2ModelRxn(model, list(dSubs.keys()) + list(dProds.keys()), dizRxn["EQUATION"], dNamesConversion)
+        equationConverted = fromKeggRxn2ModelRxn(model, list(dSubs.keys()) + list(dProds.keys()), dizRxn["EQUATION"], dNamesConversion, dSpecies2Annotation)
 
         if equationConverted.split(' <=> ')[0] != '':
             dSubs = gL.dizReaProd(equationConverted.split(' <=> ')[0])
@@ -720,13 +908,14 @@ def addRxn2Model(model, rxnIdentifier, compartment, dNamesConversion, lb = -1000
 
 
 # def addMets(model, row):
-def addMets(model, metId, metName, metCompartment, chemFormula = "", fromKEGG = False):
+def addMets(model, metId, metName, metCompartment, dSpecies2Annotation, chemFormula = "", fromKEGG = False):
     lMets_objects = []
     if metId not in model.metabolites:
         metObject = cb.Metabolite(metId, formula=chemFormula, name=metName, compartment=metCompartment)
         lMets_objects.append(metObject)
     model.add_metabolites(lMets_objects)
     if fromKEGG == True:
-        print("metId KEGG: ", metId.split("_")[0])
+        # print("metId KEGG: ", metId.split("_")[0])
         model.metabolites.get_by_id(metId).annotation["kegg.compound"] = metId.split("_")[0]
-    print("ANNOTATION\n", model.metabolites.get_by_id(metId), " - ", model.metabolites.get_by_id(metId).annotation, "\n")
+        # dSpecies2Annotation[metId]["kegg.compound"] = metId.split("_")[0]
+    # print("ANNOTATION\n", model.metabolites.get_by_id(metId), " - ", model.metabolites.get_by_id(metId).annotation, "\n")

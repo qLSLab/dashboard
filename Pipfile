@@ -1,0 +1,30 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+dash = "*"
+dash-bootstrap-components = "*"
+cobra = "*"
+bioservices = "*"
+biopython = "*"
+dash-uploader = "*"
+fuzzywuzzy = "*"
+reportlab = "*"
+ipython = "*"
+dash-ag-grid = "*"
+neo4j = "*"
+python-decouple = "*"
+streamlit = "==1.24"
+langchain = "*"
+langchain-community = "*"
+pyvis = "*"
+py2neo = "*"
+python-levenshtein = "*"
+pipreqs = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.8"

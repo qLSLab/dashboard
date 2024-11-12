@@ -1,0 +1,35 @@
+# Experiment parameter settings:
+
+# Name of original model. 'modelName' should be one of: "yeast8", "yeast9", "eciYali_sbmlValidated"
+modelName = "yeast8.xml"
+
+# kegg organism code
+organismCode = "sce"
+
+# # Check if reactions are mass balanced
+# checkMassBalance = "Y"
+#
+# # Connect the same metabolite in multiple compartments, when isolated, through a simple transport
+# connectSameIsolatedMetsWithSimpleTransport = "Y"
+#
+# # Close isolated metabolites with an exchange whose direction depends on the directionality of the reactions where it is involved
+# closeIsolatedMetabolitesWithExchange = "Y"
+#
+# # Check if model is not able to produce any metabolites without uptake of metabolites.
+# checkSomethingIsProducedFromNothing = "Y"
+#
+# # Check if model is not able to consume any metabolites without demand of metabolites.
+# checkIfUptakeSomethingBlockingDemand = "Y"
+#
+# # Check which reactions are involved in formation of loops
+# checkLoops = "Y"
+
+# Refine reactions boundaries
+# refineBoundariesInReactionsFormingLoops = "Y"
+boundariesToChangeFileName = "yeast8_refinement_bounds2Change.tsv"
+
+# Refine GPR
+gprRefinementFileName = "yeast8_refinement_newGpr.tsv"
+
+# Turn off reactions with the "added after the biolog update" tag when they are not in the target organism
+curateBiologExperimentAddedRxns = "Y"

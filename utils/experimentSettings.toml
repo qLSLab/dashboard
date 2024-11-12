@@ -1,0 +1,40 @@
+# Experiment parameter settings:
+
+# Name of original model.
+modelName = "yeast8.xml"
+
+# Load or create file including correspondence between metabolites name and their KEGG identifier
+nameToKeggId = "name2KeggId_yeast8.tsv"
+
+#  'kind' should be one or more of: "endogenous", "aox" (AOX-catalyzed path), "bacterial", "ncl", "taco", "marine", "wt" (for Yarrowia), "wt_sceLike" (for Yarrowia)
+# exp = "aox"
+
+# file containing  the KEGG id and compartment of reactions that need to be added to the model
+# keggRxnsToAddFileName = "aox.tsv"
+exp = "aox.tsv"
+
+# file containing  information of exchange rxns that need to be added to the model: kegg Id of metabolite involved in the exchange, reaction compartment, its lower and upper bound
+# addExchRxnsForTheseMetsFileName = "aox_addExchForThoseMets.tsv"
+exchangeRxns = "aox_addExchForThoseMets.tsv"
+
+# kegg organism code
+organismCode = "sce"
+
+# condition should be one ore more of: "Glc", "EG", "Acetate"
+condition = ["ethylene glycol"]
+
+# medium name should be one of: "YNB" (for S.cerevisiae), "YNByarr" (for Yarrowia)
+medium = "YNB.tsv"
+
+# mediumBounds should be one of "wet", "free"
+# mediumBounds = "wet"
+
+# mediumFileName
+mediumData = "Y"
+
+# extracellular production and consumption file name
+extracelProdCons = "extracFluxes_YNB_ethylene_glycol.tsv"
+# extracelProdConsData = "Y"
+
+# List of uptake reactions that need to remain active even if they are not explicitly included in the experimental medium
+# lActiveUptake =  []

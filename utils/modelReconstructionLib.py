@@ -16,16 +16,24 @@ MODELDIR = gL.dDirs["mods"]
 RAWDIR = gL.dDirs["raw"]
 OUTDIR = gL.dDirs["out"]
 
-def curateModel(modelIn, dfName2KeggId, logFile = None, dConfigParams=None):
+def curateModel(modelIn, organismKeggCode, dfName2KeggId, modelPath, curateFile_newRxns, curateFile_bounds2Change,
+            # curateFile_biologExp,
+            curateFile_grp2Refine, dSpecies2Annotation):
     """
     Load base model or create it if it does not exist yet and, if necessary, curate it.
     """
-    modelFileName = dConfigParams["modelName"]
-    modelName = modelFileName.split(".")[0]
+    # modelFileName = dConfigParams["modelName"]
+    # modelName = modelFileName.split(".")[0]
+
+    # print("\nmodelPath: ", modelPath, "\n")
+    modelFileName = os.path.split(modelPath)[1]
+    # print("\nmodelFileName: ", modelFileName, "\n")
+    modelName = os.path.splitext(modelFileName)[0]
+    # print("\nmodelName: ", modelName, "\n")
+
 
     ## check if rxns are mass balanced
-    # if "checkMassBalance" in dConfigParams:
-    mmL.addMissingChemicalFormulae(modelIn)
+    mmL.addMissingChemicalFormulae(modelIn, dSpecies2Annotation)
     dUnbalancedRxns = cb.manipulation.validate.check_mass_balance(modelIn)
     # This function will return elements which violate mass balance
     lItems = []
@@ -38,7 +46,7 @@ def curateModel(modelIn, dfName2KeggId, logFile = None, dConfigParams=None):
         lItems.append([unbRxn.id, reactionString, formulaEquation, dUnbalancedRxns[unbRxn]])
 
     dfUnbRxns = pd.DataFrame(lItems, columns = ["RxnId", "Equation", "Equation_wFormula", "UnbalancedItems"])
-    gL.toLog(logFile, f"Reactions in {modelName}_unbalancedReactions.tsv need to be manually fixed\n")
+    # gL.toLog(logFile, f"Reactions in {modelName}_unbalancedReactions.tsv need to be manually fixed\n")
     dfUnbRxns.to_csv(os.path.join(OUTDIR, modelName + "_unbalancedReactions.tsv"), sep = "\t", index = True)
 
     # Add exchange reactions for isolated metabolites
@@ -51,161 +59,274 @@ def curateModel(modelIn, dfName2KeggId, logFile = None, dConfigParams=None):
         if isIsolatedMet is True:
             lIsolatedMets.append(met.id)
 
-    gL.toLog(logFile, f"Model includes {len(lIsolatedMets)} isolated metabolites")
+    # gL.toLog(logFile, f"Model includes {len(lIsolatedMets)} isolated metabolites")
 
     dfIsolatedMets = df[df["Id"].isin(lIsolatedMets)]
     dfIsolatedMetbyName = dfIsolatedMets.groupby("Name")["Id"].apply(list)
 
     ## Add simple transport reactions for isolated metabolites
-    # if "connectSameIsolatedMetsWithSimpleTransport" in dConfigParams:
     mmL.connectSameMetaboliteDifferentCompartment(modelIn, dfIsolatedMetbyName)
 
-    if "newRxnsToAddFileName" in dConfigParams:
-        dKeggId2ModelMet = mmL.getMet2KeggId(modelIn)
-        if os.path.exists(os.path.join(RAWDIR, dConfigParams["newRxnsToAddFileName"])) is True:
-            dfRxnsToAdd = pd.read_csv(
-                os.path.join(RAWDIR, dConfigParams["newRxnsToAddFileName"]),
+    dKeggId2ModelMet = mmL.getMet2KeggId(modelIn, dSpecies2Annotation)
+
+    # print("curateFile_newRxns: ", curateFile_newRxns, "\n-----------\n")
+
+    if curateFile_newRxns != "ATTENTION: You have not selected any file. Please fill and then export the table below.":
+        curateFile_newRxns_fileName = curateFile_newRxns.split(":\t")[1].strip()
+        # print("curateFile_newRxns: ", curateFile_newRxns_fileName, "\n-----------\n")
+        if os.path.exists(curateFile_newRxns_fileName) is True:
+            dfRxnsToAdd = pd.read_csv(curateFile_newRxns_fileName,
                 sep="\t")
+    elif os.path.exists(os.path.join(RAWDIR,"modelRefinement_newRxns2Add.tsv")) is True:
+        dfRxnsToAdd = pd.read_csv(os.path.join(RAWDIR,"modelRefinement_newRxns2Add.tsv"), sep="\t")
+    else:
+        dfRxnsToAdd = pd.DataFrame()
 
-            for rowkeggRxnsToAdd in dfRxnsToAdd.itertuples():
-                print("\n------------\nrowkeggRxnsToAdd\n", rowkeggRxnsToAdd, "\n")
-                rxnId = rowkeggRxnsToAdd.Rxn + "_" + rowkeggRxnsToAdd.Compartment
-                if rxnId not in modelIn.reactions:
-                    dizRxn = kL.getKeggInfo("rn:" + rowkeggRxnsToAdd.Rxn)
-                    if len(dizRxn) != 0:
-                        rxnObj, gprRule, dKeggId2ModelMet = mmL.convertKeggRxns2ModelRxn(dizRxn, modelIn, dConfigParams["organismCode"], rowkeggRxnsToAdd.Rxn, rowkeggRxnsToAdd.Compartment, modelIn, dNamesConversion = dKeggId2ModelMet)
+    if dfRxnsToAdd.empty == False:
+        for rowkeggRxnsToAdd in dfRxnsToAdd.itertuples():
+            # print("\n------------\nrowkeggRxnsToAdd\n", rowkeggRxnsToAdd, "\n")
+            # print("\n------------\organismKeggCode\n", organismKeggCode, "\n")
+            rxnId = rowkeggRxnsToAdd.Rxn + "_" + rowkeggRxnsToAdd.Compartment
+            if rxnId not in modelIn.reactions:
+                dizRxn = kL.getKeggInfo("rn:" + rowkeggRxnsToAdd.Rxn)
+                if len(dizRxn) != 0:
+                    rxnObj, gprRule, dKeggId2ModelMet = mmL.convertKeggRxns2ModelRxn(dizRxn,dSpecies2Annotation, modelIn, organismKeggCode, rowkeggRxnsToAdd.Rxn, rowkeggRxnsToAdd.Compartment, modelIn, dNamesConversion = dKeggId2ModelMet)
+                else:
+                    rxnObj, dKeggId2ModelMet, dfName2KeggId = mmL.convertEquation2ModelEquation(modelIn, rowkeggRxnsToAdd.Rxn, rowkeggRxnsToAdd.Compartment, rowkeggRxnsToAdd.Equation, dfConversionMetName2MetKegg, modelIn, dNamesConversion= dKeggId2ModelMet)
+                    if pd.isna(rowkeggRxnsToAdd.Gpr) is False:
+                        gprRule = rowkeggRxnsToAdd.Gpr
                     else:
-                        rxnObj, dKeggId2ModelMet, dfName2KeggId = mmL.convertEquation2ModelEquation(modelIn, rowkeggRxnsToAdd.Rxn, rowkeggRxnsToAdd.Compartment, rowkeggRxnsToAdd.Equation, dfConversionMetName2MetKegg, modelIn, dNamesConversion= dKeggId2ModelMet)
-                        if pd.isna(rowkeggRxnsToAdd.Gpr) is False:
-                            gprRule = rowkeggRxnsToAdd.Gpr
-                        else:
-                            gprRule = ""
+                        gprRule = ""
 
-                    modelIn.add_reactions([rxnObj])
-                    modelIn.reactions.get_by_id(rxnId).gene_reaction_rule = gprRule
+                modelIn.add_reactions([rxnObj])
+                modelIn.reactions.get_by_id(rxnId).gene_reaction_rule = gprRule
 
     ## Close all remaining isolated mets with an exchange reaction
-    # if "closeIsolatedMetabolitesWithExchange" in dConfigParams:
-    gL.toLog(logFile, "* Add exchange reactions for isolated metabolites")
+    # gL.toLog(logFile, "* Add exchange reactions for isolated metabolites")
     mmL.exchgRxns4IsolatedMet(modelIn, dfIsolatedMetbyName)
 
-    # A first control is that the modelIn should not be able to produce any
-    # metabolites without uptake of metabolites.
-    # if "checkSomethingIsProducedFromNothing" in dConfigParams:
+    # A first control is that the modelIn should not be able to produce any metabolites without uptake of metabolites.
     with modelIn:
-        mmL.checkSomethingIsProducedFromNothing(modelIn, logFile, dConfigParams=dConfigParams)
-        gL.toLog(logFile, "Reactions in checkIfSomethingFromNothing_positiveReactions.tsv need to be manually fixed\n")
+        mmL.checkSomethingIsProducedFromNothing(modelIn, modelName)
+        # gL.toLog(logFile, "Reactions in checkIfSomethingFromNothing_positiveReactions.tsv need to be manually fixed\n")
 
-    # A second control is that the modelIn should not be able to consume any
-    # metabolites without demand of metabolites.
-    # if "checkIfUptakeSomethingBlockingDemand" in dConfigParams:
+    # A second control is that the modelIn should not be able to consume any metabolites without demand of metabolites.
     with modelIn:
-        mmL.checkIfUptakeSomethingBlockingDemand(modelIn, logFile, dConfigParams=dConfigParams)
-        gL.toLog(logFile, "Reactions in checkIfUptakeSomethingBlockingDemand_positiveReactions.tsv need to be manually fixed\n")
+        mmL.checkIfUptakeSomethingBlockingDemand(modelIn,modelName)
+        # gL.toLog(logFile, "Reactions in checkIfUptakeSomethingBlockingDemand_positiveReactions.tsv need to be manually fixed\n")
 
     ## check reactions forming loops
-    # if "checkLoops" in dConfigParams:
     with modelIn:
-        mmL.getReactionsFormingLoops(modelIn, logFile, dConfigParams=dConfigParams)
+        mmL.getReactionsFormingLoops(modelIn, modelName)
 
-    # if "refineBoundariesInReactionsFormingLoops" in dConfigParams:
-    if "boundariesToChangeFileName" in dConfigParams:
-        if os.path.exists(os.path.join(RAWDIR, dConfigParams["boundariesToChangeFileName"])) is True:
-            dfBounds = pd.read_csv(
-                os.path.join(RAWDIR, dConfigParams["boundariesToChangeFileName"]),
+    if curateFile_bounds2Change != "ATTENTION: You have not selected any file. Please fill and then export the table below.":
+        curateFile_bounds2Change_fileName = curateFile_bounds2Change.split(":\t")[1].strip()
+        if os.path.exists(curateFile_bounds2Change_fileName) is True:
+            dfBounds = pd.read_csv(curateFile_bounds2Change_fileName,
                 sep="\t",
                 dtype= {"Lb": float, "Ub": float})
-            for row in dfBounds.itertuples():
-                modelIn.reactions.get_by_id(row.Id).lower_bound = row.Lb
-                modelIn.reactions.get_by_id(row.Id).upper_bound = row.Ub
-        else:
-            print(f"Attention: {modelName}_refinement_bounds2Change.tsv file does not exist")
 
-    ######################################################################################
-    ######################################################################################
+    elif os.path.exists(os.path.join(RAWDIR,"yeast8_refinement_bounds2Change.tsv")) is True:
+        dfBounds = pd.read_csv(os.path.join(RAWDIR,"yeast8_refinement_bounds2Change.tsv"), sep="\t", dtype= {"Lb": float, "Ub": float})
+    else:
+        dfBounds = pd.DataFrame()
 
-    if "curateBiologExperimentAddedRxns" in dConfigParams:
-        mmL.curateRxnsAddedAfterBiologUpdate(modelIn, dConfigParams)
+    # print("\n", dfBounds, "\n")
+    if dfBounds.empty == False:
+        for row in dfBounds.itertuples():
+            modelIn.reactions.get_by_id(row.Id).lower_bound = row.Lb
+            modelIn.reactions.get_by_id(row.Id).upper_bound = row.Ub
 
     ## aggiungo le gpr identificate
-    if "gprRefinementFileName" in dConfigParams:
-        if os.path.exists(os.path.join(RAWDIR, dConfigParams["gprRefinementFileName"])) is True:
+    if curateFile_grp2Refine != "ATTENTION: You have not selected any file. Please fill and then export the table below.":
+        curateFile_grp2Refine_fileName = curateFile_grp2Refine.split(":\t")[1].strip()
+        if os.path.exists(curateFile_grp2Refine_fileName) is True:
             dfnewGpr = pd.read_csv(
-                os.path.join(RAWDIR, dConfigParams["gprRefinementFileName"]),
+                curateFile_grp2Refine_fileName,
                 sep="\t",
                 dtype= {"Lb": int, "Ub": int})
-            for row in dfnewGpr.itertuples():
-                modelIn.reactions.get_by_id(row.Id).gene_reaction_rule = row.Gpr
 
-    ######################################################################################
-    ######################################################################################
-    # COSA SUCCCEDE SE LO LASCIO A 0.7 constraints 0,1000 to r_4046 instead of 0.7 set in the original model
+    elif os.path.exists(os.path.join(RAWDIR,"yeast8_refinement_newGpr.tsv")) is True:
+        dfnewGpr = pd.read_csv(os.path.join(RAWDIR,"yeast8_refinement_newGpr.tsv"), sep="\t", dtype= {"Lb": int, "Ub": int})
+    else:
+        dfnewGpr = pd.DataFrame()
+
+    if dfnewGpr.empty == False:
+        for row in dfnewGpr.itertuples():
+            modelIn.reactions.get_by_id(row.Id).gene_reaction_rule = row.Gpr
 
     ## Change boundaries of exchange reactions from infinite to the default value (1000 in this case)
-    gL.toLog(logFile, "* Scale the exchange reactions boundaries")
-    modelIn = mmL.scaleExchangeRxnsBoundaries(modelIn, dConfigParams)
+    # gL.toLog(logFile, "* Scale the exchange reactions boundaries")
+    modelIn = mmL.scaleExchangeRxnsBoundaries(modelIn)
 
-    cb.io.write_sbml_model(modelIn, os.path.join(MODELDIR, modelName + "_postCuration.xml"))
+    print("\n\n-------------------FINE CURA--------------\n\n")
+
+    # cb.io.write_sbml_model(modelIn, os.path.join(MODELDIR, modelName + "_postCuration.xml"))
+
     return modelIn
 
 
-def createNewModel(dfConversionMetName2MetKegg, model2GetInfoFrom, dizKeggCompound2ModelCompound = {}, dConfigParams=None):
-    newModel = Model(dConfigParams["experimentModel"].split(".")[0] + " pathway")
+# def createNewModel(dfConversionMetName2MetKegg, model2GetInfoFrom, rxnsToAddFileName,exchangeRxnsFileName, experimentModel, keggOrgCode, dizKeggCompound2ModelCompound = {}):
+# # def createNewModel(dfConversionMetName2MetKegg, model2GetInfoFrom, dizKeggCompound2ModelCompound = {}, dConfigParams=None):
+#     # experimentModel = experimentModel.split(".")[0]
+#     newModel = Model(experimentModel + " pathway")
+#     # newModel = Model(dConfigParams["experimentModel"].split(".")[0] + " pathway")
+#
+#     # rxnsToAddFileName = dConfigParams["experimentRxsToAdd"]
+#     # dfRxnsToAdd = pd.read_csv(os.path.join(RAWDIR, rxnsToAddFileName), sep = "\t")
+#
+#     if rxnsToAddFileName != "ATTENTION: You have not selected any file. Please fill and then export the table below.":
+#         rxnsToAddFile = rxnsToAddFileName.split(":\t")[1].strip()
+#         if os.path.exists(os.path.join(RAWDIR, rxnsToAddFile)) is True:
+#             dfRxnsToAdd = pd.read_csv(os.path.join(RAWDIR, rxnsToAddFile),
+#                 sep="\t")
+#
+#     elif os.path.exists(os.path.join(RAWDIR, experimentModel + "_internalRxns.tsv")) is True:
+#         dfRxnsToAdd = pd.read_csv(os.path.join(RAWDIR, experimentModel + "_internalRxns.tsv"), sep="\t")
+#     else:
+#         dfRxnsToAdd = pd.DataFrame()
+#
+#     if dfRxnsToAdd.empty == False:
+#         for rowkeggRxnsToAdd in dfRxnsToAdd.itertuples():
+#             rxnId = rowkeggRxnsToAdd.Rxn + "_" + rowkeggRxnsToAdd.Compartment
+#             if rxnId not in newModel.reactions:
+#                 dizRxn = kL.getKeggInfo("rn:" + rowkeggRxnsToAdd.Rxn)
+#                 if len(dizRxn) != 0:
+#                     rxnObj, gprRule, dizKeggCompound2ModelCompound = mmL.convertKeggRxns2ModelRxn(dizRxn, newModel, keggOrgCode, rowkeggRxnsToAdd.Rxn, rowkeggRxnsToAdd.Compartment, model2GetInfoFrom, dNamesConversion = dizKeggCompound2ModelCompound)
+#                     # rxnObj, gprRule, dizKeggCompound2ModelCompound = mmL.convertKeggRxns2ModelRxn(dizRxn, newModel, dConfigParams["organismCode"], rowkeggRxnsToAdd.Rxn, rowkeggRxnsToAdd.Compartment, model2GetInfoFrom, dNamesConversion = dizKeggCompound2ModelCompound)
+#                 else:
+#                     rxnObj, dizKeggCompound2ModelCompound, dfConversionMetName2MetKegg = mmL.convertEquation2ModelEquation(newModel, rowkeggRxnsToAdd.Rxn, rowkeggRxnsToAdd.Compartment, rowkeggRxnsToAdd.Equation, dfConversionMetName2MetKegg, model2GetInfoFrom, dNamesConversion= dizKeggCompound2ModelCompound)
+#                     if pd.isna(rowkeggRxnsToAdd.Gpr) is False:
+#                         gprRule = rowkeggRxnsToAdd.Gpr
+#                     else:
+#                         gprRule = ""
+#
+#                 newModel.add_reactions([rxnObj])
+#                 newModel.reactions.get_by_id(rxnId).gene_reaction_rule = gprRule
+#
+#     # addExchRxnsForTheseMetsFileName = dConfigParams["exchangeRxns"]
+#     # dfaddExchRxnsForTheseMets = pd.read_csv(os.path.join(RAWDIR, addExchRxnsForTheseMetsFileName), sep = "\t")
+#     #####################################################
+#     #####################################################
+#     if exchangeRxnsFileName != "ATTENTION: You have not selected any file. Please fill and then export the table below.":
+#         exchangeRxnsFile = exchangeRxnsFileName.split("\t")[1].strip()
+#         if os.path.exists(os.path.join(RAWDIR, exchangeRxnsFile)) is True:
+#             dfaddExchRxnsForTheseMets = pd.read_csv(os.path.join(RAWDIR, exchangeRxnsFile),
+#                 sep="\t")
+#
+#     elif os.path.exists(os.path.join(RAWDIR, experimentModel + "_exchRxns.tsv")) is True:
+#         dfaddExchRxnsForTheseMets = pd.read_csv(os.path.join(RAWDIR, experimentModel + "_exchRxns.tsv"), sep="\t")
+#     else:
+#         dfaddExchRxnsForTheseMets = pd.DataFrame()
+#
+#     if dfaddExchRxnsForTheseMets.empty == False:
+#         for rowaddExch in dfaddExchRxnsForTheseMets.itertuples():
+#             # metObjId, metObjName, metObjFormula, dizKeggCompound2ModelCompound, isKEGG = mmL.convert2ModelMet(rowaddExch.Met, rowaddExch.Compartment, dNamesConversion = dizKeggCompound2ModelCompound, modelFromWhichInfo = model2GetInfoFrom)
+#             # mmL.addMets(newModel, metObjId, metObjName, rowaddExch.Compartment, chemFormula = metObjFormula, fromKEGG = isKEGG)
+#             metObjId, dizKeggCompound2ModelCompound = mmL.fromKEGG2ModelIdAndAdd2Model(rowaddExch.Met, rowaddExch.Compartment, dizKeggCompound2ModelCompound,newModel, model2GetInfoFrom)
+#             mmL.addExchRxnForMet(newModel, newModel.metabolites.get_by_id(metObjId), newLB=rowaddExch.Lb, newUB=rowaddExch.Ub)
+#
+#     # Add exchange reactions for isolated metabolites
+#     dMet2Name = mmL.getMet2Name(newModel)
+#     df = pd.DataFrame(dMet2Name.items(), columns=['Id', 'Name'])
+#
+#     lIsolatedMets = []
+#     for met in newModel.metabolites:
+#         isIsolatedMet = mmL.isIsolatedMet(newModel, met.id)
+#         if isIsolatedMet is True:
+#             lIsolatedMets.append(met.id)
+#
+#     # print(f"newModel includes {len(lIsolatedMets)} isolated metabolites\n")
+#
+#     dfIsolatedMets = df[df["Id"].isin(lIsolatedMets)]
+#     dfIsolatedMetbyName = dfIsolatedMets.groupby("Name")["Id"].apply(list)
+#
+#     ## Add simple transport reactions for isolated metabolites
+#     mmL.connectSameMetaboliteDifferentCompartment(newModel, dfIsolatedMetbyName)
+#
+#     ## export newModel
+#     # cb.io.write_sbml_model(newModel, os.path.join(MODELDIR, dConfigParams["experimentModel"]))
+#
+#     # print("\n\nFINE CREATION!!!\n")
+#
+#     return newModel, dizKeggCompound2ModelCompound, dfConversionMetName2MetKegg
 
-    rxnsToAddFileName = dConfigParams["experimentRxsToAdd"]
-    dfRxnsToAdd = pd.read_csv(os.path.join(RAWDIR, rxnsToAddFileName), sep = "\t")
+def createNewModel_part1_addInternalRxns(dfConversionMetName2MetKegg, model2GetInfoFrom, rxnsToAddFileName, experimentModel, keggOrgCode, dSpecies2Annotation, dizKeggCompound2ModelCompound = {}):
+    newModel = Model(experimentModel + " pathway")
 
-    for rowkeggRxnsToAdd in dfRxnsToAdd.itertuples():
-        print("\n------------\nrowkeggRxnsToAdd\n", rowkeggRxnsToAdd, "\n")
-        rxnId = rowkeggRxnsToAdd.Rxn + "_" + rowkeggRxnsToAdd.Compartment
-        if rxnId not in newModel.reactions:
-            dizRxn = kL.getKeggInfo("rn:" + rowkeggRxnsToAdd.Rxn)
-            if len(dizRxn) != 0:
-                print("da kegg")
-                rxnObj, gprRule, dizKeggCompound2ModelCompound = mmL.convertKeggRxns2ModelRxn(dizRxn, newModel, dConfigParams["organismCode"], rowkeggRxnsToAdd.Rxn, rowkeggRxnsToAdd.Compartment, model2GetInfoFrom, dNamesConversion = dizKeggCompound2ModelCompound)
-            else:
-                rxnObj, dizKeggCompound2ModelCompound, dfConversionMetName2MetKegg = mmL.convertEquation2ModelEquation(newModel, rowkeggRxnsToAdd.Rxn, rowkeggRxnsToAdd.Compartment, rowkeggRxnsToAdd.Equation, dfConversionMetName2MetKegg, model2GetInfoFrom, dNamesConversion= dizKeggCompound2ModelCompound)
-                print("GPR - ", rowkeggRxnsToAdd.Gpr, " - ", )
-                if pd.isna(rowkeggRxnsToAdd.Gpr) is False:
-                    gprRule = rowkeggRxnsToAdd.Gpr
+    if rxnsToAddFileName != "ATTENTION: You have not selected any file. Please fill and then export the table below.":
+        rxnsToAddFile = rxnsToAddFileName.split(":\t")[1].strip()
+        if os.path.exists(os.path.join(RAWDIR, rxnsToAddFile)) is True:
+            dfRxnsToAdd = pd.read_csv(os.path.join(RAWDIR, rxnsToAddFile),
+                sep="\t")
+
+    elif os.path.exists(os.path.join(RAWDIR, experimentModel + "_internalRxns.tsv")) is True:
+        dfRxnsToAdd = pd.read_csv(os.path.join(RAWDIR, experimentModel + "_internalRxns.tsv"), sep="\t")
+    else:
+        dfRxnsToAdd = pd.DataFrame()
+
+    if dfRxnsToAdd.empty == False:
+        for rowkeggRxnsToAdd in dfRxnsToAdd.itertuples():
+            dAnnotation = {}
+            rxnId = rowkeggRxnsToAdd.Rxn + "_" + rowkeggRxnsToAdd.Compartment
+            if rxnId not in newModel.reactions:
+                dizRxn = kL.getKeggInfo("rn:" + rowkeggRxnsToAdd.Rxn)
+                if len(dizRxn) != 0:
+                    rxnObj, gprRule, dizKeggCompound2ModelCompound = mmL.convertKeggRxns2ModelRxn(dizRxn, dSpecies2Annotation, newModel, keggOrgCode, rowkeggRxnsToAdd.Rxn, rowkeggRxnsToAdd.Compartment, model2GetInfoFrom, dNamesConversion = dizKeggCompound2ModelCompound)
+                    dAnnotation["kegg.reaction"] = rowkeggRxnsToAdd.Rxn
+                    # rxnObj, gprRule, dizKeggCompound2ModelCompound = mmL.convertKeggRxns2ModelRxn(dizRxn, newModel, dConfigParams["organismCode"], rowkeggRxnsToAdd.Rxn, rowkeggRxnsToAdd.Compartment, model2GetInfoFrom, dNamesConversion = dizKeggCompound2ModelCompound)
                 else:
-                    gprRule = ""
+                    rxnObj, dizKeggCompound2ModelCompound, dfConversionMetName2MetKegg = mmL.convertEquation2ModelEquation(newModel, rowkeggRxnsToAdd.Rxn, rowkeggRxnsToAdd.Compartment, rowkeggRxnsToAdd.Equation, dfConversionMetName2MetKegg, model2GetInfoFrom, dNamesConversion= dizKeggCompound2ModelCompound)
+                    if pd.isna(rowkeggRxnsToAdd.Gpr) is False:
+                        gprRule = rowkeggRxnsToAdd.Gpr
+                    else:
+                        gprRule = ""
 
-            newModel.add_reactions([rxnObj])
-            newModel.reactions.get_by_id(rxnId).gene_reaction_rule = gprRule
-
-    addExchRxnsForTheseMetsFileName = dConfigParams["exchangeRxns"]
-    dfaddExchRxnsForTheseMets = pd.read_csv(os.path.join(RAWDIR, addExchRxnsForTheseMetsFileName), sep = "\t")
-    if dfaddExchRxnsForTheseMets.empty is False:
-        for rowaddExch in dfaddExchRxnsForTheseMets.itertuples():
-            # metObjId, metObjName, metObjFormula, dizKeggCompound2ModelCompound, isKEGG = mmL.convert2ModelMet(rowaddExch.Met, rowaddExch.Compartment, dNamesConversion = dizKeggCompound2ModelCompound, modelFromWhichInfo = model2GetInfoFrom)
-            # mmL.addMets(newModel, metObjId, metObjName, rowaddExch.Compartment, chemFormula = metObjFormula, fromKEGG = isKEGG)
-            metObjId, dizKeggCompound2ModelCompound = mmL.fromKEGG2ModelIdAndAdd2Model(rowaddExch.Met, rowaddExch.Compartment, dizKeggCompound2ModelCompound,newModel, model2GetInfoFrom)
-            mmL.addExchRxnForMet(newModel, newModel.metabolites.get_by_id(metObjId), newLB=rowaddExch.Lb, newUB=rowaddExch.Ub)
-
-    # Add exchange reactions for isolated metabolites
-    dMet2Name = mmL.getMet2Name(newModel)
-    df = pd.DataFrame(dMet2Name.items(), columns=['Id', 'Name'])
-
-    lIsolatedMets = []
-    for met in newModel.metabolites:
-        isIsolatedMet = mmL.isIsolatedMet(newModel, met.id)
-        if isIsolatedMet is True:
-            lIsolatedMets.append(met.id)
-
-    print(f"newModel includes {len(lIsolatedMets)} isolated metabolites\n")
-
-    dfIsolatedMets = df[df["Id"].isin(lIsolatedMets)]
-    dfIsolatedMetbyName = dfIsolatedMets.groupby("Name")["Id"].apply(list)
-
-    ## Add simple transport reactions for isolated metabolites
-    mmL.connectSameMetaboliteDifferentCompartment(newModel, dfIsolatedMetbyName)
-
-    ## export newModel
-    cb.io.write_sbml_model(newModel, os.path.join(MODELDIR, dConfigParams["experimentModel"]))
+                newModel.add_reactions([rxnObj])
+                newModel.reactions.get_by_id(rxnId).gene_reaction_rule = gprRule
+                newModel.reactions.get_by_id(rxnId).annotation = dAnnotation
 
     return newModel, dizKeggCompound2ModelCompound, dfConversionMetName2MetKegg
 
+
+def createNewModel_part2_addExchangeRxns(newModel):
+    lExchangeRxns = []
+    lColumns = ["MetId", "MetName", "Lb", "Ub"]
+    lIsolatedMets = []
+    for met in newModel.metabolites:
+        isolatedMet, addDemand, addSink = mmL.isIsolatedMet_and_defineIsolatedMetType(newModel, met)
+        if isolatedMet is True:
+            lIsolatedMets.append(met.id)
+            if addDemand is True:
+                lb = 0
+                ub = 1000.0
+                # mmL.addExchRxnForMet(newModel, met, lb, ub)
+                lExchangeRxns.append([met.id, met.name,lb, ub])
+            elif addSink is True:
+                lb = -1000.0
+                ub = 0
+                # mmL.addExchRxnForMet(newModel, met, lb, ub)
+                lExchangeRxns.append([met.id, met.name, lb, ub])
+
+    dfProposedExchangeRxns = pd.DataFrame(lExchangeRxns, columns = lColumns)
+    dfProposedExchangeRxns.to_csv(os.path.join(RAWDIR, "exchangeReactions_newModel.tsv"), sep ="\t", index=False)
+
+    ## Add simple transport reactions for isolated metabolites
+    dMet2Name = mmL.getMet2Name(newModel)
+    df = pd.DataFrame(dMet2Name.items(), columns=['Id', 'Name'])
+    dfIsolatedMets = df[df["Id"].isin(lIsolatedMets)]
+    dfIsolatedMetbyName = dfIsolatedMets.groupby("Name")["Id"].apply(list)
+    mmL.connectSameMetaboliteDifferentCompartment(newModel, dfIsolatedMetbyName)
+
+    return newModel, dfProposedExchangeRxns
+
+
+def createNewModel_part3_addRevisedExchangeRxns(model, dfProposedExchangeRxns):
+    for row in dfProposedExchangeRxns.itertuples():
+        met = model.metabolites.get_by_id(row.MetId)
+        mmL.addExchRxnForMet(model, met, float(row.Lb), float(row.Ub))
+
+    return model
 
 ##############################
 ### OLD PART #################

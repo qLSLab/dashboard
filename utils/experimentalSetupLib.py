@@ -47,36 +47,33 @@ def switchOffAllSinkRxns(modelIn, lActiveUptake):
                 rxn.upper_bound = 0
     return modelIn
 
-def addMediumData(modelIn, dfMedium, dNamesConversion, dConfigParams=None):
+#def addMediumData(modelIn, dfMedium, dNamesConversion, dConfigParams=None):
+def addMediumData(modelIn, dfMedium, dNamesConversion):
     """Add to the model all the medium data in terms of their experimental concentration.
 
     Keyword arguments:
          modelIn - is the cobra model where the medium data are added
          dfMedium - is the dataframe including all experimental concentrations of medium actors
-         dConfigParams - is the configuration parameters dictionary where it should be stored a validated model name
     """
     #mediumSetting = dConfigParams["mediumBounds"]
 
     #for rxnMedium in dfMedium.itertuples():
+    lMetsMediumNotAssigned2Ex = []
     for metMedium in dfMedium.itertuples():
-        print("ROW\n", metMedium, "\n")
         rxnId, modelMetId = mmL.getExchInModelForKeggId(modelIn, metMedium.KeggMetId, dNamesConversion)
         # if rxnId == "":
-        print("met: ", metMedium.Met)
-        print("kegg met: ", metMedium.KeggMetId)
-        print("modelMetId: ", modelMetId)
-        print("rxnId: ", rxnId, "\n")
-        if rxnId is None:
+        if rxnId is None and modelMetId is None:
+            for met2Search in modelIn.metabolites:
+                if met2Search.id.startswith(metMedium.KeggMetId) and met2Search.compartment == "c":
+                    mmL.addExchRxnForMet(modelIn, met2Search, newLB=-1000, newUB=0)
+                    rxnId = 'EX_' + met2Search.id
+
+        elif rxnId is None and modelMetId is not None:
             mmL.addExchRxnForMet(modelIn, modelIn.metabolites.get_by_id(modelMetId), newLB=-1000, newUB=0)
             rxnId = 'EX_' + modelMetId
-            print("None rxnId: ", rxnId, "\n")
 
         rxn = modelIn.reactions.get_by_id(rxnId)
-        # rxn = modelIn.reactions.get_by_id(rxnMedium.RxnID)
-        #if mediumSetting == "wet":
         rxn.lower_bound = -1 * (metMedium.Concentration)
-        #elif mediumSetting == "free":
-        #    rxn.lower_bound = -1000
 
     return modelIn
 
@@ -91,9 +88,8 @@ def setExtracFluxes(dfConsProd, lMeasuredMets, modelIn, dNamesConversion,dfConve
         modelIn - is the cobra model where the sink reactions are blocked
         dConfigParams - is the configuration parameters dictionary
     """
-
+    lModels = []
     lTimePoints = dfConsProd.index.tolist()
-    print("time points: ", lTimePoints)
 
     # sort list (essential for grouping)
     lMeasuredMets.sort()
@@ -114,49 +110,40 @@ def setExtracFluxes(dfConsProd, lMeasuredMets, modelIn, dNamesConversion,dfConve
         next(b, None)
         # use zip to pair the elements from the two iterators
         lTimePointsCouples = list(zip(a, b))
-        print("lTimePointsCouples: ", lTimePointsCouples)
 
         for pair in lTimePointsCouples:
             with modelIn:
                 # create dictionary where for each measured metabolite there is the corresponding consumption or production rate in a given time interval
                 # pair[1] + "_" + pair[0] ## key
-                print(pair)
                 deltaT = int(pair[1]) - int(pair[0])
-                print("deltaT: ", deltaT)
 
                 dfConsProd_currentTimePoints = dfConsProd[dfConsProd.index.isin(pair)]
-                print("\nDF\n", dfConsProd_currentTimePoints)
                 # dfConsProd_currentTimePoints.set_index('Time', inplace = True)
-                print("\nDF_T\n", dfConsProd_currentTimePoints.T)
 
                 dfConsProd_currentTimePoints_transpose = dfConsProd_currentTimePoints.T
                 dfConsProd_currentTimePoints_transpose["variation"] =(dfConsProd_currentTimePoints_transpose[pair[1]] - dfConsProd_currentTimePoints_transpose[pair[0]])/deltaT
 
                 dfConsProd_currentT_wVariation = dfConsProd_currentTimePoints_transpose[["variation"]].T
-                print("dfConsProd_currentT_wVariation: \n", dfConsProd_currentT_wVariation)
 
                 for metMeasured in lMeasuredMets_grouped:
-                    print("metMeasured: ", metMeasured)
                     lvalues = dfConsProd_currentT_wVariation.loc["variation"][metMeasured].tolist()
-                    print(lvalues)
-                    print(min(lvalues), max(lvalues))
 
                     ## convert name to kegg id
                     metSplitted = metMeasured[0].split("_")
                     del metSplitted[-1]
                     metLower = " ".join(metSplitted).lower()
-                    print("metLower: ", metLower)
                     correspondingKeggId, dfConversionMetName2MetKegg= kL.getKeggMetId(metLower, dfConversionMetName2MetKegg)
 
                     # search for metabolite in model corresponding to the retrieved kegg id
                     rxnId, modelMetId = mmL.getExchInModelForKeggId(modelIn, correspondingKeggId, dNamesConversion)
-                    print("met: ", correspondingKeggId)
-                    print("modelMetId: ", modelMetId)
-                    print("rxnId: ", rxnId, "\n")
-                    if rxnId is None:
+                    if rxnId is None and modelMetId is not None:
                         mmL.addExchRxnForMet(modelIn, modelIn.metabolites.get_by_id(modelMetId), newLB=-1000, newUB=0)
                         rxnId = 'EX_' + modelMetId
-                        print("None rxnId: ", rxnId, "\n")
+                    elif rxnId is None and modelMetId is None:
+                        if correspondingKeggId in dNamesConversion and "c" in dNamesConversion[correspondingKeggId]:
+                            activeModelMet = dNamesConversion[correspondingKeggId]["c"]
+                            mmL.addExchRxnForMet(modelIn, modelIn.metabolites.get_by_id(activeModelMet), newLB=-1000, newUB=0)
+                            rxnId = 'EX_' + activeModelMet
 
                     rxn = modelIn.reactions.get_by_id(rxnId)
 
@@ -193,13 +180,18 @@ def setExtracFluxes(dfConsProd, lMeasuredMets, modelIn, dNamesConversion,dfConve
                                 rxn.lower_bound = -1 * max(lvalues)
                                 rxn.upper_bound = -1 * min(lvalues)
 
-                    print("LB: ", rxn.lower_bound)
-                    print("UB: ", rxn.upper_bound, "\n")
-
                 # save model
-                cb.io.write_sbml_model(modelIn, os.path.join(MODELDIR, baseModelName + "_" + "_".join(pair) + ".xml"))
+                if baseModelName != "":
+                    finalModelName = baseModelName + "_" + "_".join(pair) + ".xml"
+                else:
+                    finalModelName = "_".join(pair) + ".xml"
 
-def addMediumData2Model(modelwMediumData, dfMedium, dfConditionMets, lMetRemainActive, dfName2KeggId, dKeggId2ModelMet, dConfigParams=None):
+                cb.io.write_sbml_model(modelIn, os.path.join(MODELDIR, finalModelName))
+                lModels.append(finalModelName)
+    return lModels
+
+#def addMediumData2Model(modelwMediumData, dfMedium, dfConditionMets, lMetRemainActive, dfName2KeggId, dKeggId2ModelMet, dConfigParams=None):
+def addMediumData2Model(modelwMediumData, dfMedium, lMetRemainActive, dfName2KeggId, dKeggId2ModelMet):
     ldfMedium_wInfo = []
     for row in dfMedium.itertuples():
         correspondingKeggId, dfName2KeggId = kL.getKeggMetId(row.Met.lower(), dfName2KeggId)
@@ -207,9 +199,9 @@ def addMediumData2Model(modelwMediumData, dfMedium, dfConditionMets, lMetRemainA
     dfMedium_wKeggId = pd.DataFrame(ldfMedium_wInfo, columns = ["Met", "KeggMetId", "Concentration"])
 
     ## aggiungo al file medium delle righe per definire cosa entra dalla variabile "medium"
-    for metCondition in dfConditionMets.itertuples():
-        correspondingKeggId, dfName2KeggId = kL.getKeggMetId(metCondition.Met.lower(), dfName2KeggId)
-        dfMedium_wKeggId.loc[len(dfMedium_wKeggId)] = [metCondition.Met, correspondingKeggId, metCondition.Lb]
+    # for metCondition in dfConditionMets.itertuples():
+    #     correspondingKeggId, dfName2KeggId = kL.getKeggMetId(metCondition.Met.lower(), dfName2KeggId)
+    #     dfMedium_wKeggId.loc[len(dfMedium_wKeggId)] = [metCondition.Met, correspondingKeggId, metCondition.Lb]
 
     lActiveUptake = []
     for activeMet in lMetRemainActive:
@@ -220,7 +212,7 @@ def addMediumData2Model(modelwMediumData, dfMedium, dfConditionMets, lMetRemainA
     modelwMediumData = switchOffAllSinkRxns(modelwMediumData, lActiveUptake)
 
     # add medium concentrations data
-    modelwMediumData = addMediumData(modelwMediumData, dfMedium_wKeggId,dKeggId2ModelMet, dConfigParams = dConfigParams)
+    modelwMediumData = addMediumData(modelwMediumData, dfMedium_wKeggId,dKeggId2ModelMet)
     return dfName2KeggId, modelwMediumData
 
 ########################################

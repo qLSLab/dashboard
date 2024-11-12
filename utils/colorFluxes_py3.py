@@ -162,7 +162,9 @@ NSMAP = {
 ### Reading the values file,  starting point to map in color fluxes.
 
 with open(fileValuesName, 'r') as fileValues:
+    fileValues.readline()
     linesValues = fileValues.readlines()
+
 fileValues.close
 
 # print('linesValues\n', linesValues)
@@ -182,8 +184,9 @@ colDict = {}
 tipDict = {}
 colThickDict = defaultdict(list) # To read it colThickDict[row][0][element]
 
-for lines in linesValues    :
+for lines in linesValues:
     line = lines.split('\t')
+    # print(line, '\n', line[idColValColumn], '\n-----------\n')
     # print(line)
     # print('select\t', line[idColValColumn])
     # print('is_number\t', is_number(line[idColValColumn]))
@@ -191,6 +194,7 @@ for lines in linesValues    :
         tipDict[line[0]] = float(line[idColValColumn])
         colDict[line[0]] = abs(float(line[idColValColumn]))
         colThickDict[line[0]] = abs(float(line[idThickValColumn]))
+
 
 # print(colDict)
 # print(tipDict)
@@ -205,15 +209,19 @@ for lines in linesValues    :
 [mapBoundaryThickValue, minThickVal, maxThickVal, low] = findMapBound(colThickDict.values())
 # print(mapBoundaryThickValue, minThickVal, maxThickVal, low)
 
-minColVal = float(sys.argv[6])
-maxColVal = float(sys.argv[7])
-low = float(sys.argv[8])
+print("minColVal\t", minColVal)
+print("maxColVal\t", maxColVal)
+print("low\t", low)
+# minColVal = float(sys.argv[6])
+# maxColVal = float(sys.argv[7])
+# low = float(sys.argv[8])
 
 ### Setting up the color mapping.
 
 # palette = Cubehelix.make(start=1, rotation=1, n=256, gamma=0.5)
 
-colorbar = str(sys.argv[9])
+# colorbar = str(sys.argv[9])
+colorbar = str(sys.argv[6])
 #jet = cm = plt.get_cmap('viridis_r')
 #jet = cm = plt.get_cmap('gist_rainbow_r')
 jet = cm = plt.get_cmap(colorbar)
@@ -488,8 +496,11 @@ for element in root.iter():
 
 
 perc50 = round(10**(math.log10(maxColVal - low) * 0.5), 3)
+print("perc50: ",perc50)
 perc25 = round(10**(math.log10(maxColVal - low) * 0.25), 3)
+print("perc25: ",perc25)
 perc75 = round(10**(math.log10(maxColVal - low) * 0.75), 3)
+print("perc75: ",perc75)
 
 # COLORBAR ELEMENTS
 
@@ -576,7 +587,8 @@ legTextFlux.set("font-family", "'MyriadPro-Regular'")
 legTextFlux.set("font-size", "4")
 legTextFlux.set("fill", "gray")
 
-titleMap =  sys.argv[10] + " - " +  sys.argv[11] + " - " +  sys.argv[12] + " + " +  sys.argv[13] + " - Time point: " +  sys.argv[14] + "h - sf: " +  sys.argv[15]
+titleMap =  sys.argv[7] + " - " +  sys.argv[8] + " - Time point: " +  sys.argv[9] + "h-" + sys.argv[10] +  "h"
+# titleMap =  sys.argv[10] + " - " +  sys.argv[11] + " - Time point: " +  sys.argv[12] + "h-" + sys.argv[13] +  "h"
 
 ## l'argomento transform indica le coordinate dell'elemento che stiamo aggiungendo
 legTextFlux = ET.SubElement(svgEl, ET.QName(SVG, "text"),

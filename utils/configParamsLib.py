@@ -25,7 +25,8 @@ def loadConfigParams(confFileName="experimentSettings.toml"):
     gL.beingOrExit(confFileName)
     with open(confFileName, "rb") as confFile:
         dConfigParams = tomllib.load(confFile)
-    
+        # print("dConfigParams\n", dConfigParams)
+
     # dValidParams = {
     #     "modelName": ["yeast8", "eciYali_sbmlValidated", "yeast9"],
     #     "lRxns2Add": lRxnsKEGG.copy(),
